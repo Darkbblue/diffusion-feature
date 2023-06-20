@@ -76,6 +76,10 @@ def main():
     parser.add_argument('--worker_idx', type=int, default=0, help='Index of worker to use')
     parser.add_argument('--load_stats', action='store_true', help='Load saved stats to compute acc')
     parser.add_argument('--t', type=int, help='Timesteps to compute features')
+    parser.add_argument('--dataset', type=str, default='cifar10',
+                        choices=['pets', 'flowers', 'stl10', 'mnist', 'cifar10', 'food', 'caltech101', 'imagenet',
+                                 'objectnet', 'aircraft'], help='Dataset to use')
+    parser.add_argument('--split', type=str, choices=['train', 'test'], default='train')
 
     parser.add_argument('--input_dir', type=str)
     parser.add_argument('--output_dir', type=str, default='./output/')
@@ -91,9 +95,9 @@ def main():
     transform = get_transform(interpolation, args.img_size)
     latent_size = args.img_size // 8
     # use a build-in dataset
-    # target_dataset = get_target_dataset(args.dataset, train=args.split == 'train', transform=transform)
+    target_dataset = get_target_dataset(args.dataset, train=args.split=='train', transform=transform)
     # or use raw image input
-    preprocess = get_transform()
+    # preprocess = get_transform()
     # img = preprocess(Image.open('./cifar.jpg'))
     # target_dataset = [(img, None)]
 
@@ -124,11 +128,6 @@ def main():
     tasks = sorted(os.listdir(args.input_dir))[args.worker_idx::args.n_workers]
 
     # main loop
-    target_dataset = []
-    for filename in sorted([f for f in os.listdir(args.input_dir) if f.endswith('.jpg')]):
-        img = preprocess(Image.open(args.input_dir + filename))
-        target_dataset.append((img, filename))
-
     # idxs = list(range(len(target_dataset)))
     # idxs_to_eval = idxs[args.worker_idx::args.n_workers]
 
@@ -137,8 +136,8 @@ def main():
     results = []
     pbar = tqdm.tqdm(total=len(target_dataset))
     while i < len(target_dataset):
-        sublist = target_dataset[i:i+args.batch_size]
-        i += len(sublist)
+        # sublist = target_dataset[i:i+args.batch_size]
+        sublist = [target_dataset[j] for j in range(i, min(i+args.batch_size, len(target_dataset)))]
 
         x0s = []
         with torch.no_grad():
@@ -162,10 +161,11 @@ def main():
         #     x0 *= 0.18215
 
         features = extract_one_feature(unet, x0, text_embeddings, scheduler, shared_noise, args, latent_size)
-        for j, (_, filename) in enumerate(sublist):
-            np.save(args.output_dir+filename.replace('.jpg', ''), features[j])
+        for j in range(len(sublist)):
+            np.save(args.output_dir+str(i+j), features[j])
 
         pbar.update(len(sublist))
+        i += len(sublist)
 
 
 if __name__ == '__main__':
